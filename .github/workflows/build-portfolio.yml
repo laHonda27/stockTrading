@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+# Add global permissions for the entire workflow
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME_API: lahonda27/stocktrading/stocktrading-api
@@ -51,9 +56,11 @@ jobs:
     needs: [test-and-validate]
     name: Build Docker Images
     
+    # Ensure explicit permissions for this job
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
     - name: Checkout code
@@ -62,7 +69,7 @@ jobs:
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v3
       with:
-        registry: ghcr.io
+        registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -72,7 +79,7 @@ jobs:
         context: ./backend/StockTrader.API
         file: ./backend/StockTrader.API/Dockerfile
         push: true
-        tags: ghcr.io/lahonda27/stocktrading/stocktrading-api:latest
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}:latest
 
     - name: Build and push Frontend Docker image
       uses: docker/build-push-action@v5
@@ -80,7 +87,7 @@ jobs:
         context: ./frontend
         file: ./frontend/Dockerfile
         push: true
-        tags: ghcr.io/lahonda27/stocktrading/stocktrading-frontend:latest
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
 
   create-release:
     runs-on: ubuntu-latest
@@ -115,7 +122,7 @@ jobs:
           
           ```bash
           # A lancer avec powershell ou bash:
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lahonda27/stocktrader/main/docker-compose.production.yml" -OutFile "docker-compose.yml"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lahonda27/stocktrading/main/docker-compose.production.yml" -OutFile "docker-compose.yml"
           docker-compose up -d
           ```
           
