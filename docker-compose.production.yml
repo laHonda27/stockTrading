@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: stocktrader-database
+    environment:
+      ACCEPT_EULA: Y
+      SA_PASSWORD: "Password123!"
+      MSSQL_PID: Express
+    ports:
+      - "1434:1433"
+    volumes:
+      - stocktrader_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123!' -C -Q 'SELECT 1' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  api:
+    image: ghcr.io/lahonda27/stocktrading/stocktrading-api:latest
+    container_name: stocktrader-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=StockTraderDB;User Id=sa;Password=Password123!;TrustServerCertificate=true;
+    ports:
+      - "5172:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/lahonda27/stocktrading/stocktrading-frontend:latest
+    container_name: stocktrader-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  stocktrader_data:

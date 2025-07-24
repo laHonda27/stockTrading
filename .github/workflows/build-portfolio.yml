@@ -1,0 +1,133 @@
+name: Build Portfolio Images
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: lahonda27/stocktrading/stocktrading-api
+  IMAGE_NAME_FRONTEND: lahonda27/stocktrading/stocktrading-frontend
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    name: Tests & Validation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 9
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Setup Node.js 18
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Build Backend
+      run: |
+        cd backend/StockTrader.API
+        dotnet restore
+        dotnet build --no-restore
+        echo "Backend build successful"
+
+    - name: Build Frontend
+      run: |
+        cd frontend
+        npm ci
+        npm run build
+        echo "Frontend build successful"
+
+  build-docker-images:
+    runs-on: ubuntu-latest
+    needs: [test-and-validate]
+    name: Build Docker Images
+    
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push API Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend/StockTrader.API
+        file: ./backend/StockTrader.API/Dockerfile
+        push: true
+        tags: ghcr.io/lahonda27/stocktrading/stocktrading-api:latest
+
+    - name: Build and push Frontend Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        file: ./frontend/Dockerfile
+        push: true
+        tags: ghcr.io/lahonda27/stocktrading/stocktrading-frontend:latest
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [build-docker-images]
+    if: github.ref == 'refs/heads/main'
+    name: Create Release
+    
+    permissions:
+      contents: write  
+      packages: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create release tag
+      id: tag
+      run: |
+        TAG="v$(date +'%Y.%m.%d')-$(echo ${{ github.sha }} | cut -c1-7)"
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        echo "Generated tag: $TAG"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.tag.outputs.tag }}
+        name: StockTrader ${{ steps.tag.outputs.tag }}
+        body: |
+          # StockTrader - Plateforme de Trading Simulée
+          
+          ## Lancement rapide
+          
+          ```bash
+          # A lancer avec powershell ou bash:
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lahonda27/stocktrader/main/docker-compose.production.yml" -OutFile "docker-compose.yml"
+          docker-compose up -d
+          ```
+          
+          ##  Accès direct
+          - Application : http://localhost:3000
+          - API Swagger: http://localhost:5172/swagger
+                  
+          ## Images Docker
+          - API: `ghcr.io/lahonda27/stocktrading/stocktrading-api:latest`
+          - Frontend: `ghcr.io/lahonda27/stocktrading/stocktrading-frontend:latest`
+        
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
